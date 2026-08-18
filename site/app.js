@@ -122,6 +122,36 @@
     return html;
   }
 
+  /* ---------- Переключатель светлой/тёмной темы ---------- */
+
+  function setupThemeToggle() {
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    const icon = btn.querySelector('.theme-icon');
+
+    function apply(theme) {
+      if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        icon.textContent = '☀️';
+        btn.title = 'Переключить на светлую тему';
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+        icon.textContent = '🌙';
+        btn.title = 'Переключить на тёмную тему';
+      }
+    }
+
+    apply(document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
+
+    btn.addEventListener('click', () => {
+      const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('theme', next);
+      apply(next);
+    });
+  }
+
+  setupThemeToggle();
+
   /* ---------- Состояние и загрузка данных ---------- */
 
   let DATA = null;

@@ -7,12 +7,24 @@
   <meta name="description" content="Билеты по специальности 1.2.2: краткие и подробные ответы, поиск по названию и словам." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎓</text></svg>" />
   <link rel="stylesheet" href="styles.css" />
+  <script>
+    (function () {
+      if (localStorage.getItem('theme') === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
 </head>
 <body>
   <header class="site-header">
     <div class="header-inner">
-      <h1>Билеты 1.2.2</h1>
-      <p class="subtitle">Математическое моделирование, численные методы и комплексы программ</p>
+      <div>
+        <h1>Билеты 1.2.2</h1>
+        <p class="subtitle">Математическое моделирование, численные методы и комплексы программ</p>
+      </div>
+      <button id="theme-toggle" class="theme-toggle" type="button" title="Светлая / тёмная тема">
+        <span class="theme-icon">🌙</span>
+      </button>
     </div>
   </header>
 
