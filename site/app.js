@@ -87,7 +87,6 @@
 
   let DATA = null;
   const els = {
-    introPanel: document.getElementById('intro-panel'),
     ticketsContainer: document.getElementById('tickets-container'),
     ticketNav: document.getElementById('ticket-nav'),
     searchInput: document.getElementById('search-input'),
@@ -99,7 +98,6 @@
     .then((r) => r.json())
     .then((data) => {
       DATA = data;
-      renderIntro();
       renderAll();
       setupSearch();
       setupActiveNavTracking();
@@ -108,16 +106,23 @@
       els.ticketsContainer.innerHTML = `<p class="no-results">Не удалось загрузить данные: ${escapeHtml(String(err))}</p>`;
     });
 
-  function renderIntro() {
-    let html = '';
-    if (DATA.intro) html += mdToHtml(DATA.intro);
-    if (DATA.guide) {
-      html += `<details><summary style="cursor:pointer;color:var(--text);font-weight:600;">Как пользоваться материалами</summary>${mdToHtml(DATA.guide)}</details>`;
-    }
-    els.introPanel.innerHTML = html;
+  function toggleBlockHtml(ticketId, key, label, md) {
+    if (!md) return '';
+    const panelId = `${key}-${ticketId}`;
+    return `<button class="detail-toggle" aria-expanded="false" data-target="${panelId}">
+               <span class="chevron">▸</span> ${label}
+             </button>
+             <div class="detail-panel" id="${panelId}">
+               <div class="detail-inner ticket-body">${mdToHtml(md)}</div>
+             </div>`;
   }
 
   function ticketCardHtml(ticket) {
+    const toggles = [
+      toggleBlockHtml(ticket.id, 'explain', 'Объяснение на пальцах', ticket.explainMd),
+      toggleBlockHtml(ticket.id, 'detail', 'Подробный ответ', ticket.detailedMd),
+    ].join('');
+
     return `
       <article class="ticket-card" id="ticket-${ticket.id}" data-ticket-id="${ticket.id}">
         <div class="ticket-card-header">
@@ -125,16 +130,7 @@
           <h3 class="ticket-title">${inline(ticket.title)}</h3>
         </div>
         <div class="ticket-body">${mdToHtml(ticket.contentMd)}</div>
-        ${
-          ticket.detailedMd
-            ? `<button class="detail-toggle" aria-expanded="false" data-target="detail-${ticket.id}">
-                 <span class="chevron">▸</span> Подробный ответ
-               </button>
-               <div class="detail-panel" id="detail-${ticket.id}">
-                 <div class="detail-inner ticket-body">${mdToHtml(ticket.detailedMd)}</div>
-               </div>`
-            : ''
-        }
+        ${toggles ? `<div class="toggle-row">${toggles}</div>` : ''}
       </article>`;
   }
 

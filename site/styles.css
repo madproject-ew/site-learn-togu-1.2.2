@@ -298,8 +298,18 @@ body {
   font-size: 0.85em;
 }
 
-.detail-toggle {
+.toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
   margin-top: 0.9rem;
+}
+
+.toggle-row .detail-panel {
+  flex-basis: 100%;
+}
+
+.detail-toggle {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
