@@ -290,6 +290,28 @@ body {
   border-top: 1px solid var(--border);
   margin: 0.8rem 0;
 }
+.ticket-body .table-wrap {
+  overflow-x: auto;
+  margin: 0.6rem 0;
+}
+.ticket-body table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.85rem;
+}
+.ticket-body th,
+.ticket-body td {
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+.ticket-body th {
+  background: var(--tag-bg);
+  color: var(--text);
+  font-weight: 600;
+}
+
 .ticket-body code {
   font-family: var(--mono);
   background: var(--tag-bg);

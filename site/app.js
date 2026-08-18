@@ -15,6 +15,19 @@
     return s;
   }
 
+  function isTableRow(line) {
+    return /^\|.*\|$/.test(line);
+  }
+  function isTableSep(line) {
+    return /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$/.test(line);
+  }
+  function splitTableRow(line) {
+    let s = line.trim();
+    if (s.startsWith('|')) s = s.slice(1);
+    if (s.endsWith('|')) s = s.slice(0, -1);
+    return s.split('|').map((c) => c.trim());
+  }
+
   function mdToHtml(md) {
     if (!md) return '';
     const lines = md.split('\n');
@@ -35,12 +48,33 @@
       }
     }
 
-    for (const rawLine of lines) {
-      const trimmed = rawLine.trim();
+    let i = 0;
+    while (i < lines.length) {
+      const trimmed = lines[i].trim();
 
       if (trimmed === '') {
         flushPara();
         flushList();
+        i += 1;
+        continue;
+      }
+
+      if (isTableRow(trimmed) && i + 1 < lines.length && isTableSep(lines[i + 1].trim())) {
+        flushPara();
+        flushList();
+        const header = splitTableRow(trimmed);
+        i += 2;
+        const rows = [];
+        while (i < lines.length && isTableRow(lines[i].trim())) {
+          rows.push(splitTableRow(lines[i].trim()));
+          i += 1;
+        }
+        html +=
+          '<div class="table-wrap"><table><thead><tr>' +
+          header.map((h) => `<th>${inline(h)}</th>`).join('') +
+          '</tr></thead><tbody>' +
+          rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join('')}</tr>`).join('') +
+          '</tbody></table></div>';
         continue;
       }
 
@@ -50,6 +84,7 @@
         flushList();
         const level = Math.min(6, m[1].length - 3 + 4);
         html += `<h${level}>${inline(m[2])}</h${level}>`;
+        i += 1;
         continue;
       }
 
@@ -57,6 +92,7 @@
         flushPara();
         flushList();
         html += '<hr/>';
+        i += 1;
         continue;
       }
 
@@ -64,6 +100,7 @@
       if (m) {
         flushPara();
         listBuffer.push(m[1]);
+        i += 1;
         continue;
       }
 
@@ -72,11 +109,13 @@
         flushPara();
         flushList();
         html += `<blockquote>${inline(m[1])}</blockquote>`;
+        i += 1;
         continue;
       }
 
       flushList();
       paraBuffer.push(trimmed);
+      i += 1;
     }
     flushPara();
     flushList();
@@ -118,8 +157,13 @@
   }
 
   function ticketCardHtml(ticket) {
+    // Обычный билет: краткий ответ виден сразу, "на пальцах" и подробный — под дропдаунами.
+    // Билет без краткого ответа (напр. вводный раздел 0): "на пальцах" становится основным текстом.
+    const hasShort = Boolean(ticket.contentMd);
+    const mainMd = hasShort ? ticket.contentMd : ticket.explainMd;
+
     const toggles = [
-      toggleBlockHtml(ticket.id, 'explain', 'Объяснение на пальцах', ticket.explainMd),
+      hasShort ? toggleBlockHtml(ticket.id, 'explain', 'Объяснение на пальцах', ticket.explainMd) : '',
       toggleBlockHtml(ticket.id, 'detail', 'Подробный ответ', ticket.detailedMd),
     ].join('');
 
@@ -129,7 +173,7 @@
           <span class="ticket-id">${ticket.id}</span>
           <h3 class="ticket-title">${inline(ticket.title)}</h3>
         </div>
-        <div class="ticket-body">${mdToHtml(ticket.contentMd)}</div>
+        <div class="ticket-body">${mdToHtml(mainMd)}</div>
         ${toggles ? `<div class="toggle-row">${toggles}</div>` : ''}
       </article>`;
   }
@@ -146,14 +190,20 @@
         </div>`;
     }
 
-    if (DATA.appendix) {
+    if (DATA.extras && DATA.extras.length) {
       contentHtml += `
         <div class="section-block" id="section-appendix">
-          <h2 class="section-heading">${inline(DATA.appendix.title)}</h2>
+          <h2 class="section-heading">Приложение</h2>
           <div class="tickets-grid">
-            <article class="ticket-card">
-              <div class="ticket-body">${mdToHtml(DATA.appendix.contentMd)}</div>
-            </article>
+            ${DATA.extras
+              .map(
+                (extra) => `
+                  <article class="ticket-card">
+                    <h3 class="ticket-title">${inline(extra.title)}</h3>
+                    <div class="ticket-body">${mdToHtml(extra.contentMd)}</div>
+                  </article>`
+              )
+              .join('')}
           </div>
         </div>`;
     }

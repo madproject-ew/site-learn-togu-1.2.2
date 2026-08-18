@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 // Парсит markdown-файлы из "данные/" в site/data.json.
 // Без внешних зависимостей — запускается локально и в GitHub Actions.
+//
+// Три источника на один и тот же билет "X.Y":
+//   short    — Шпаргалка (краткий основной ответ)
+//   explain  — Объяснение на пальцах (простыми словами)
+//   detailed — Подробная подготовка (полная теория)
+// Разделы/билеты объединяются по id: структура (порядок разделов и билетов)
+// берётся из самого полного источника, а не привязана к одному файлу —
+// так сайт переживает добавление нового раздела в один из файлов.
 
 const fs = require('fs');
 const path = require('path');
@@ -12,150 +20,51 @@ const SHORT_FILE = path.join(DATA_DIR, 'Шпаргалка_на_билет_1.2.2
 const DETAILED_FILE = path.join(DATA_DIR, 'Подробная_подготовка_1.2.2.md');
 const EXPLAIN_FILE = path.join(DATA_DIR, 'Объяснение_на_пальцах_1.2.2.md');
 
-function parseShort(text) {
+// Заголовок раздела: "# Раздел 0. ..." или (только в одном файле) "# Нулевой раздел. ...".
+function matchSectionHeader(line) {
+  let m = line.match(/^#\s+Раздел\s+(\d+)\.\s*(.*)$/);
+  if (m) return { id: m[1], title: `Раздел ${m[1]}. ${m[2]}`.trim() };
+
+  m = line.match(/^#\s+Нулевой\s+раздел\.?\s*(.*)$/i);
+  if (m) return { id: '0', title: `Раздел 0. ${m[1]}`.trim() };
+
+  return null;
+}
+
+// Разбирает один markdown-файл на разделы с билетами ("## X.Y. Título")
+// и "хвостовые" верхнеуровневые блоки (приложения, памятки — не билеты).
+function parseFile(text) {
   const lines = text.split('\n');
   const sections = [];
-  let intro = [];
-  let appendix = null;
+  const extras = [];
   let curSection = null;
   let curTicket = null;
-  let mode = 'preamble'; // preamble | section | appendix
-
-  const flushTicket = () => {
-    if (curTicket && curSection) {
-      curTicket.contentMd = curTicket.lines.join('\n').trim();
-      delete curTicket.lines;
-      curSection.tickets.push(curTicket);
-    }
-    curTicket = null;
-  };
-
-  for (const rawLine of lines) {
-    const line = rawLine.replace(/\r$/, '');
-
-    let m = line.match(/^#\s+Раздел\s+(\d+)\.\s*(.*)$/);
-    if (m) {
-      flushTicket();
-      curSection = { id: m[1], title: `Раздел ${m[1]}. ${m[2]}`.trim(), tickets: [] };
-      sections.push(curSection);
-      mode = 'section';
-      continue;
-    }
-
-    m = line.match(/^#\s+Приложение\.?\s*(.*)$/);
-    if (m) {
-      flushTicket();
-      appendix = { title: line.replace(/^#\s+/, '').trim(), lines: [] };
-      mode = 'appendix';
-      continue;
-    }
-
-    m = line.match(/^##\s+(\d+\.\d+)\.\s*(.*)$/);
-    if (m && mode === 'section') {
-      flushTicket();
-      curTicket = { id: m[1], title: m[2].trim(), lines: [] };
-      continue;
-    }
-
-    if (mode === 'appendix' && appendix) {
-      appendix.lines.push(line);
-    } else if (curTicket) {
-      curTicket.lines.push(line);
-    } else if (mode === 'preamble') {
-      intro.push(line);
-    }
-  }
-  flushTicket();
-
-  if (appendix) {
-    appendix.contentMd = appendix.lines.join('\n').trim();
-    delete appendix.lines;
-  }
-
-  // Убираем заголовок "# Шпаргалка ..." из intro, оставляем описательный текст
-  intro = intro.filter((l) => !/^#\s+Шпаргалка/.test(l));
-
-  return { intro: intro.join('\n').trim(), sections, appendix };
-}
-
-function parseDetailed(text) {
-  const lines = text.split('\n');
-  const byId = {};
-  let guideLines = [];
-  let curTicketId = null;
-  let curLines = [];
-  let mode = 'preamble'; // preamble | section
-
-  const flush = () => {
-    if (curTicketId) {
-      byId[curTicketId] = curLines.join('\n').trim();
-    }
-    curTicketId = null;
-    curLines = [];
-  };
-
-  for (const rawLine of lines) {
-    const line = rawLine.replace(/\r$/, '');
-
-    if (/^#\s+Раздел\s+\d+\./.test(line)) {
-      flush();
-      mode = 'section';
-      continue;
-    }
-
-    const m = line.match(/^##\s+(\d+\.\d+)\.\s*(.*)$/);
-    if (m && mode === 'section') {
-      flush();
-      curTicketId = m[1];
-      continue;
-    }
-
-    if (curTicketId) {
-      curLines.push(line);
-    } else if (mode === 'preamble') {
-      guideLines.push(line);
-    }
-  }
-  flush();
-
-  const guide = guideLines
-    .join('\n')
-    .replace(/^#\s+Подробная подготовка.*$/m, '')
-    .trim();
-
-  return { byId, guide };
-}
-
-// Парсит "Объяснение на пальцах": билеты по id + хвостовые общие разделы
-// (не привязанные к конкретному билету), которые уходят в приложение.
-function parseExplain(text) {
-  const lines = text.split('\n');
-  const byId = {};
-  const extras = [];
-  let curTicketId = null;
-  let curLines = [];
   let curExtra = null;
   let mode = 'preamble'; // preamble | section | extra
 
   const flush = () => {
-    if (curTicketId) {
-      byId[curTicketId] = curLines.join('\n').trim();
+    if (curTicket && curSection) {
+      curTicket.contentMd = curTicket.lines.join('\n').trim();
+      delete curTicket.lines;
+      curSection.tickets.push(curTicket);
     }
     if (curExtra) {
       curExtra.contentMd = curExtra.lines.join('\n').trim();
       delete curExtra.lines;
       if (curExtra.contentMd) extras.push(curExtra);
     }
-    curTicketId = null;
-    curLines = [];
+    curTicket = null;
     curExtra = null;
   };
 
   for (const rawLine of lines) {
     const line = rawLine.replace(/\r$/, '');
 
-    if (/^#\s+Раздел\s+\d+\./.test(line)) {
+    const sec = matchSectionHeader(line);
+    if (sec) {
       flush();
+      curSection = { id: sec.id, title: sec.title, tickets: [] };
+      sections.push(curSection);
       mode = 'section';
       continue;
     }
@@ -163,7 +72,7 @@ function parseExplain(text) {
     let m = line.match(/^##\s+(\d+\.\d+)\.\s*(.*)$/);
     if (m && mode === 'section') {
       flush();
-      curTicketId = m[1];
+      curTicket = { id: m[1], title: m[2].trim(), lines: [] };
       continue;
     }
 
@@ -175,20 +84,62 @@ function parseExplain(text) {
       continue;
     }
 
-    if (curTicketId) {
-      curLines.push(line);
+    if (curTicket) {
+      curTicket.lines.push(line);
     } else if (curExtra) {
       curExtra.lines.push(line);
     }
+    // mode === 'preamble' и ни то ни другое — вступительный текст перед первым разделом, не используется
   }
   flush();
 
-  return { byId, extras };
+  return { sections, extras };
+}
+
+function toMaps(parsed) {
+  const sectionTitleById = {};
+  const ticketTitleById = {};
+  const ticketContentById = {};
+  for (const section of parsed.sections) {
+    sectionTitleById[section.id] = section.title;
+    for (const ticket of section.tickets) {
+      ticketTitleById[ticket.id] = ticket.title;
+      ticketContentById[ticket.id] = ticket.contentMd;
+    }
+  }
+  return { sectionTitleById, ticketTitleById, ticketContentById };
+}
+
+// Порядок разделов/билетов берём объединением по всем источникам:
+// какой файл первым ввёл раздел/билет, того порядка и держимся,
+// остальные источники лишь дополняют структуру недостающими id.
+function buildSkeleton(parsedFiles) {
+  const sectionOrder = [];
+  const sectionsById = new Map();
+
+  for (const parsed of parsedFiles) {
+    for (const section of parsed.sections) {
+      if (!sectionsById.has(section.id)) {
+        sectionsById.set(section.id, { id: section.id, ticketOrder: [], ticketIds: new Set() });
+        sectionOrder.push(section.id);
+      }
+      const sec = sectionsById.get(section.id);
+      for (const ticket of section.tickets) {
+        if (!sec.ticketIds.has(ticket.id)) {
+          sec.ticketIds.add(ticket.id);
+          sec.ticketOrder.push(ticket.id);
+        }
+      }
+    }
+  }
+
+  sectionOrder.sort((a, b) => Number(a) - Number(b));
+  return sectionOrder.map((id) => ({ id, ticketIds: sectionsById.get(id).ticketOrder }));
 }
 
 function stripMd(md) {
   return md
-    .replace(/[#>*_`~]/g, ' ')
+    .replace(/[#>*_`~|]/g, ' ')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/\s+/g, ' ')
     .trim();
@@ -199,34 +150,57 @@ function main() {
   const detailedText = fs.readFileSync(DETAILED_FILE, 'utf8');
   const explainText = fs.readFileSync(EXPLAIN_FILE, 'utf8');
 
-  const short = parseShort(shortText);
-  const detailed = parseDetailed(detailedText);
-  const explain = parseExplain(explainText);
+  const shortParsed = parseFile(shortText);
+  const detailedParsed = parseFile(detailedText);
+  const explainParsed = parseFile(explainText);
+
+  const shortMaps = toMaps(shortParsed);
+  const detailedMaps = toMaps(detailedParsed);
+  const explainMaps = toMaps(explainParsed);
+
+  // Структуру (порядок) берём из самого полного источника (Подробная — она
+  // первой получает новые разделы), явные и "на пальцах" лишь дополняют.
+  const skeleton = buildSkeleton([detailedParsed, explainParsed, shortParsed]);
 
   let totalTickets = 0;
-  for (const section of short.sections) {
-    for (const ticket of section.tickets) {
-      ticket.explainMd = explain.byId[ticket.id] || '';
-      ticket.detailedMd = detailed.byId[ticket.id] || '';
-      ticket.searchText = (
-        ticket.id +
-        ' ' +
-        ticket.title +
-        ' ' +
-        stripMd(ticket.contentMd) +
-        ' ' +
-        stripMd(ticket.explainMd) +
-        ' ' +
-        stripMd(ticket.detailedMd)
-      ).toLowerCase();
-      totalTickets += 1;
-    }
-  }
+  const sections = skeleton.map(({ id, ticketIds }) => {
+    const title =
+      shortMaps.sectionTitleById[id] || explainMaps.sectionTitleById[id] || detailedMaps.sectionTitleById[id] || `Раздел ${id}`;
 
-  if (short.appendix && explain.extras.length) {
-    const extraMd = explain.extras.map((e) => `### ${e.title}\n\n${e.contentMd}`).join('\n\n');
-    short.appendix.contentMd = `${short.appendix.contentMd}\n\n${extraMd}`.trim();
-  }
+    const tickets = ticketIds.map((ticketId) => {
+      const title =
+        shortMaps.ticketTitleById[ticketId] || explainMaps.ticketTitleById[ticketId] || detailedMaps.ticketTitleById[ticketId] || ticketId;
+      const contentMd = shortMaps.ticketContentById[ticketId] || '';
+      const explainMd = explainMaps.ticketContentById[ticketId] || '';
+      const detailedMd = detailedMaps.ticketContentById[ticketId] || '';
+      totalTickets += 1;
+      return {
+        id: ticketId,
+        title,
+        contentMd,
+        explainMd,
+        detailedMd,
+        searchText: (
+          ticketId +
+          ' ' +
+          title +
+          ' ' +
+          stripMd(contentMd) +
+          ' ' +
+          stripMd(explainMd) +
+          ' ' +
+          stripMd(detailedMd)
+        ).toLowerCase(),
+      };
+    });
+
+    return { id, title, tickets };
+  });
+
+  const extras = [...shortParsed.extras, ...detailedParsed.extras, ...explainParsed.extras].map((e) => ({
+    title: e.title,
+    contentMd: e.contentMd,
+  }));
 
   const data = {
     generatedFrom: {
@@ -234,15 +208,13 @@ function main() {
       detailed: path.basename(DETAILED_FILE),
       explain: path.basename(EXPLAIN_FILE),
     },
-    intro: short.intro,
-    guide: detailed.guide,
-    sections: short.sections,
-    appendix: short.appendix,
+    sections,
+    extras,
   };
 
   fs.mkdirSync(path.dirname(OUT_FILE), { recursive: true });
   fs.writeFileSync(OUT_FILE, JSON.stringify(data, null, 2), 'utf8');
-  console.log(`OK: ${totalTickets} билетов в ${short.sections.length} разделах -> ${path.relative(__dirname, OUT_FILE)}`);
+  console.log(`OK: ${totalTickets} билетов в ${sections.length} разделах, ${extras.length} блоков приложения -> ${path.relative(__dirname, OUT_FILE)}`);
 }
 
 main();
