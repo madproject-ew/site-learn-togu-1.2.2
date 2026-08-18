@@ -20,13 +20,20 @@ const SHORT_FILE = path.join(DATA_DIR, 'Шпаргалка_на_билет_1.2.2
 const DETAILED_FILE = path.join(DATA_DIR, 'Подробная_подготовка_1.2.2.md');
 const EXPLAIN_FILE = path.join(DATA_DIR, 'Объяснение_на_пальцах_1.2.2.md');
 
-// Заголовок раздела: "# Раздел 0. ..." или (только в одном файле) "# Нулевой раздел. ...".
+// Заголовок раздела: "# Раздел N. ..." или вводный раздел 0, который в разных
+// файлах называют по-разному ("Нулевой раздел. ...", "Нулевой минимум ...").
 function matchSectionHeader(line) {
   let m = line.match(/^#\s+Раздел\s+(\d+)\.\s*(.*)$/);
   if (m) return { id: m[1], title: `Раздел ${m[1]}. ${m[2]}`.trim() };
 
   m = line.match(/^#\s+Нулевой\s+раздел\.?\s*(.*)$/i);
   if (m) return { id: '0', title: `Раздел 0. ${m[1]}`.trim() };
+
+  m = line.match(/^#\s+Нулевой\s+(.*)$/i);
+  if (m) {
+    const rest = m[1].trim();
+    return { id: '0', title: `Раздел 0. ${rest.charAt(0).toUpperCase()}${rest.slice(1)}` };
+  }
 
   return null;
 }
@@ -48,6 +55,14 @@ function parseFile(text) {
       delete curTicket.lines;
       curSection.tickets.push(curTicket);
     }
+    if (curSection && curSection.introLines) {
+      curSection.introMd = curSection.introLines
+        .join('\n')
+        .trim()
+        .replace(/\n{0,2}-{3,}\s*$/, '') // хвостовой "---"-разделитель перед первым билетом — не контент
+        .trim();
+      delete curSection.introLines;
+    }
     if (curExtra) {
       curExtra.contentMd = curExtra.lines.join('\n').trim();
       delete curExtra.lines;
@@ -63,7 +78,7 @@ function parseFile(text) {
     const sec = matchSectionHeader(line);
     if (sec) {
       flush();
-      curSection = { id: sec.id, title: sec.title, tickets: [] };
+      curSection = { id: sec.id, title: sec.title, tickets: [], introLines: [] };
       sections.push(curSection);
       mode = 'section';
       continue;
@@ -71,7 +86,11 @@ function parseFile(text) {
 
     let m = line.match(/^##\s+(\d+\.\d+)\.\s*(.*)$/);
     if (m && mode === 'section') {
-      flush();
+      if (curTicket) {
+        curTicket.contentMd = curTicket.lines.join('\n').trim();
+        delete curTicket.lines;
+        curSection.tickets.push(curTicket);
+      }
       curTicket = { id: m[1], title: m[2].trim(), lines: [] };
       continue;
     }
@@ -88,6 +107,10 @@ function parseFile(text) {
       curTicket.lines.push(line);
     } else if (curExtra) {
       curExtra.lines.push(line);
+    } else if (curSection) {
+      // Текст сразу под заголовком раздела, до первого билета "## X.Y." —
+      // вводный конспект раздела целиком (напр. "Нулевой минимум обозначений").
+      curSection.introLines.push(line);
     }
     // mode === 'preamble' и ни то ни другое — вступительный текст перед первым разделом, не используется
   }
@@ -98,16 +121,18 @@ function parseFile(text) {
 
 function toMaps(parsed) {
   const sectionTitleById = {};
+  const sectionIntroById = {};
   const ticketTitleById = {};
   const ticketContentById = {};
   for (const section of parsed.sections) {
     sectionTitleById[section.id] = section.title;
+    if (section.introMd) sectionIntroById[section.id] = section.introMd;
     for (const ticket of section.tickets) {
       ticketTitleById[ticket.id] = ticket.title;
       ticketContentById[ticket.id] = ticket.contentMd;
     }
   }
-  return { sectionTitleById, ticketTitleById, ticketContentById };
+  return { sectionTitleById, sectionIntroById, ticketTitleById, ticketContentById };
 }
 
 // Порядок разделов/билетов берём объединением по всем источникам:
@@ -166,6 +191,8 @@ function main() {
   const sections = skeleton.map(({ id, ticketIds }) => {
     const title =
       shortMaps.sectionTitleById[id] || explainMaps.sectionTitleById[id] || detailedMaps.sectionTitleById[id] || `Раздел ${id}`;
+    const introMd =
+      shortMaps.sectionIntroById[id] || explainMaps.sectionIntroById[id] || detailedMaps.sectionIntroById[id] || '';
 
     const tickets = ticketIds.map((ticketId) => {
       const title =
@@ -194,7 +221,7 @@ function main() {
       };
     });
 
-    return { id, title, tickets };
+    return { id, title, introMd, tickets };
   });
 
   const extras = [...shortParsed.extras, ...detailedParsed.extras, ...explainParsed.extras].map((e) => ({

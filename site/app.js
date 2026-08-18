@@ -214,6 +214,7 @@
       contentHtml += `
         <div class="section-block" id="section-${section.id}">
           <h2 class="section-heading">${inline(section.title)}</h2>
+          ${section.introMd ? `<div class="section-intro ticket-body">${mdToHtml(section.introMd)}</div>` : ''}
           <div class="tickets-grid">
             ${section.tickets.map(ticketCardHtml).join('')}
           </div>

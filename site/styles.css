@@ -269,6 +269,14 @@ body {
   border-bottom: 2px solid var(--border);
 }
 
+.section-intro {
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.2rem 1.4rem;
+  margin-bottom: 1.35rem;
+}
+
 .tickets-grid {
   display: flex;
   flex-direction: column;
