@@ -187,15 +187,12 @@
   }
 
   function ticketCardHtml(ticket) {
-    // Обычный билет: краткий ответ виден сразу, "на пальцах" и подробный — под дропдаунами.
-    // Билет без краткого ответа (напр. вводный раздел 0): "на пальцах" становится основным текстом.
+    // Обычный билет: краткий ответ виден сразу, подробный — под дропдауном.
+    // Билет без краткого ответа (напр. вводный раздел 0): подробный ответ становится основным текстом.
     const hasShort = Boolean(ticket.contentMd);
-    const mainMd = hasShort ? ticket.contentMd : ticket.explainMd;
+    const mainMd = hasShort ? ticket.contentMd : ticket.detailedMd;
 
-    const toggles = [
-      hasShort ? toggleBlockHtml(ticket.id, 'explain', 'Объяснение на пальцах', ticket.explainMd) : '',
-      toggleBlockHtml(ticket.id, 'detail', 'Подробный ответ', ticket.detailedMd),
-    ].join('');
+    const toggles = hasShort ? toggleBlockHtml(ticket.id, 'detail', 'Подробный ответ', ticket.detailedMd) : '';
 
     return `
       <article class="ticket-card" id="ticket-${ticket.id}" data-ticket-id="${ticket.id}">

@@ -2,9 +2,8 @@
 // Парсит markdown-файлы из "данные/" в site/data.json.
 // Без внешних зависимостей — запускается локально и в GitHub Actions.
 //
-// Три источника на один и тот же билет "X.Y":
+// Два источника на один и тот же билет "X.Y":
 //   short    — Шпаргалка (краткий основной ответ)
-//   explain  — Объяснение на пальцах (простыми словами)
 //   detailed — Подробная подготовка (полная теория)
 // Разделы/билеты объединяются по id: структура (порядок разделов и билетов)
 // берётся из самого полного источника, а не привязана к одному файлу —
@@ -16,9 +15,8 @@ const path = require('path');
 const DATA_DIR = path.join(__dirname, 'данные');
 const OUT_FILE = path.join(__dirname, 'site', 'data.json');
 
-const SHORT_FILE = path.join(DATA_DIR, 'Шпаргалка_на_билет_1.2.2.md');
-const DETAILED_FILE = path.join(DATA_DIR, 'Подробная_подготовка_1.2.2.md');
-const EXPLAIN_FILE = path.join(DATA_DIR, 'Объяснение_на_пальцах_1.2.2.md');
+const SHORT_FILE = path.join(DATA_DIR, 'Ответы_на_билет_1.2.2.md');
+const DETAILED_FILE = path.join(DATA_DIR, 'Подробное_объяснение_на_пальцах_1.2.2.md');
 
 // Заголовок раздела: "# Раздел N. ..." или вводный раздел 0, который в разных
 // файлах называют по-разному ("Нулевой раздел. ...", "Нулевой минимум ...").
@@ -173,58 +171,40 @@ function stripMd(md) {
 function main() {
   const shortText = fs.readFileSync(SHORT_FILE, 'utf8');
   const detailedText = fs.readFileSync(DETAILED_FILE, 'utf8');
-  const explainText = fs.readFileSync(EXPLAIN_FILE, 'utf8');
 
   const shortParsed = parseFile(shortText);
   const detailedParsed = parseFile(detailedText);
-  const explainParsed = parseFile(explainText);
 
   const shortMaps = toMaps(shortParsed);
   const detailedMaps = toMaps(detailedParsed);
-  const explainMaps = toMaps(explainParsed);
 
   // Структуру (порядок) берём из самого полного источника (Подробная — она
-  // первой получает новые разделы), явные и "на пальцах" лишь дополняют.
-  const skeleton = buildSkeleton([detailedParsed, explainParsed, shortParsed]);
+  // первой получает новые разделы), Шпаргалка лишь дополняет.
+  const skeleton = buildSkeleton([detailedParsed, shortParsed]);
 
   let totalTickets = 0;
   const sections = skeleton.map(({ id, ticketIds }) => {
-    const title =
-      shortMaps.sectionTitleById[id] || explainMaps.sectionTitleById[id] || detailedMaps.sectionTitleById[id] || `Раздел ${id}`;
-    const introMd =
-      shortMaps.sectionIntroById[id] || explainMaps.sectionIntroById[id] || detailedMaps.sectionIntroById[id] || '';
+    const title = shortMaps.sectionTitleById[id] || detailedMaps.sectionTitleById[id] || `Раздел ${id}`;
+    const introMd = shortMaps.sectionIntroById[id] || detailedMaps.sectionIntroById[id] || '';
 
     const tickets = ticketIds.map((ticketId) => {
-      const title =
-        shortMaps.ticketTitleById[ticketId] || explainMaps.ticketTitleById[ticketId] || detailedMaps.ticketTitleById[ticketId] || ticketId;
+      const title = shortMaps.ticketTitleById[ticketId] || detailedMaps.ticketTitleById[ticketId] || ticketId;
       const contentMd = shortMaps.ticketContentById[ticketId] || '';
-      const explainMd = explainMaps.ticketContentById[ticketId] || '';
       const detailedMd = detailedMaps.ticketContentById[ticketId] || '';
       totalTickets += 1;
       return {
         id: ticketId,
         title,
         contentMd,
-        explainMd,
         detailedMd,
-        searchText: (
-          ticketId +
-          ' ' +
-          title +
-          ' ' +
-          stripMd(contentMd) +
-          ' ' +
-          stripMd(explainMd) +
-          ' ' +
-          stripMd(detailedMd)
-        ).toLowerCase(),
+        searchText: (ticketId + ' ' + title + ' ' + stripMd(contentMd) + ' ' + stripMd(detailedMd)).toLowerCase(),
       };
     });
 
     return { id, title, introMd, tickets };
   });
 
-  const extras = [...shortParsed.extras, ...detailedParsed.extras, ...explainParsed.extras].map((e) => ({
+  const extras = [...shortParsed.extras, ...detailedParsed.extras].map((e) => ({
     title: e.title,
     contentMd: e.contentMd,
   }));
@@ -233,7 +213,6 @@ function main() {
     generatedFrom: {
       short: path.basename(SHORT_FILE),
       detailed: path.basename(DETAILED_FILE),
-      explain: path.basename(EXPLAIN_FILE),
     },
     sections,
     extras,
