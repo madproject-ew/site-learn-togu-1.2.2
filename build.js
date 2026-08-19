@@ -55,8 +55,10 @@ function repairMathBraces(content) {
 
 function repairLatex(text) {
   return text.replace(/\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g, (whole, blockInner, inlineInner) => {
-    if (blockInner !== undefined) return `$$${repairMathBraces(blockInner)}$$`;
-    return `$${repairMathBraces(inlineInner)}$`;
+    // Пробел сразу перед закрывающим $ (напр. "\subset $") сбивает строгий
+    // парсер формул у pandoc (KaTeX на сайте это прощает, pandoc — нет).
+    if (blockInner !== undefined) return `$$${repairMathBraces(blockInner.trim())}$$`;
+    return `$${repairMathBraces(inlineInner.trim())}$`;
   });
 }
 
