@@ -18,6 +18,48 @@ const OUT_FILE = path.join(__dirname, 'site', 'data.json');
 const SHORT_FILE = path.join(DATA_DIR, 'Ответы_на_билет_1.2.2.md');
 const DETAILED_FILE = path.join(DATA_DIR, 'Подробное_объяснение_на_пальцах_1.2.2.md');
 
+// Автопочинка формул: источники периодически перегенерируются целиком, и в них
+// систематически проскакивает одна и та же опечатка — экранированная открывающая
+// скобка множества \{ без парной \} (или наоборот), например "\{1,2,2}={2,1\}"
+// вместо "\{1,2,2\}=\{2,1\}". Группирующие {} (x^{n}, V_{k+1}) — не трогаем.
+function repairMathBraces(content) {
+  if (!/\\[{}]/.test(content)) return content; // нет ни одной экранированной скобки — нечего чинить
+  const stack = [];
+  const insertBackslashAt = new Set();
+  for (let i = 0; i < content.length; i++) {
+    const ch = content[i];
+    if (ch !== '{' && ch !== '}') continue;
+    const escaped = content[i - 1] === '\\';
+    if (ch === '{') {
+      if (escaped) {
+        stack.push({ structural: false }); // \{ — уже экранирована, но парную \}/} всё равно надо отследить
+      } else {
+        const before = content.slice(0, i);
+        const structural = /[\^_]$/.test(before) || /\\[a-zA-Z]+$/.test(before);
+        stack.push({ structural });
+        if (!structural) insertBackslashAt.add(i);
+      }
+    } else {
+      const top = stack.pop();
+      if (!escaped && top && !top.structural) insertBackslashAt.add(i);
+    }
+  }
+  if (insertBackslashAt.size === 0) return content;
+  let result = '';
+  for (let i = 0; i < content.length; i++) {
+    if (insertBackslashAt.has(i)) result += '\\';
+    result += content[i];
+  }
+  return result;
+}
+
+function repairLatex(text) {
+  return text.replace(/\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g, (whole, blockInner, inlineInner) => {
+    if (blockInner !== undefined) return `$$${repairMathBraces(blockInner)}$$`;
+    return `$${repairMathBraces(inlineInner)}$`;
+  });
+}
+
 // Заголовок раздела: "# Раздел N. ..." или вводный раздел 0, который в разных
 // файлах называют по-разному ("Нулевой раздел. ...", "Нулевой минимум ...").
 function matchSectionHeader(line) {
@@ -169,8 +211,8 @@ function stripMd(md) {
 }
 
 function main() {
-  const shortText = fs.readFileSync(SHORT_FILE, 'utf8');
-  const detailedText = fs.readFileSync(DETAILED_FILE, 'utf8');
+  const shortText = repairLatex(fs.readFileSync(SHORT_FILE, 'utf8'));
+  const detailedText = repairLatex(fs.readFileSync(DETAILED_FILE, 'utf8'));
 
   const shortParsed = parseFile(shortText);
   const detailedParsed = parseFile(detailedText);
