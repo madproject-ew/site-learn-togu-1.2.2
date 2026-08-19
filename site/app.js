@@ -33,6 +33,7 @@
     const lines = md.split('\n');
     let html = '';
     let listBuffer = [];
+    let listType = null; // 'ul' | 'ol'
     let paraBuffer = [];
 
     function flushPara() {
@@ -43,9 +44,11 @@
     }
     function flushList() {
       if (listBuffer.length) {
-        html += `<ul>${listBuffer.map((li) => `<li>${inline(li)}</li>`).join('')}</ul>`;
+        const tag = listType === 'ol' ? 'ol' : 'ul';
+        html += `<${tag}>${listBuffer.map((li) => `<li>${inline(li)}</li>`).join('')}</${tag}>`;
         listBuffer = [];
       }
+      listType = null;
     }
 
     let i = 0;
@@ -99,6 +102,18 @@
       m = trimmed.match(/^[-*]\s+(.*)$/);
       if (m) {
         flushPara();
+        if (listType === 'ol') flushList();
+        listType = 'ul';
+        listBuffer.push(m[1]);
+        i += 1;
+        continue;
+      }
+
+      m = trimmed.match(/^\d+[.)]\s+(.*)$/);
+      if (m) {
+        flushPara();
+        if (listType === 'ul') flushList();
+        listType = 'ol';
         listBuffer.push(m[1]);
         i += 1;
         continue;
