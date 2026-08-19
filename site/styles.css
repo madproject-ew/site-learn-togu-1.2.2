@@ -407,6 +407,11 @@ body {
   margin: 0.8rem 0;
   padding-bottom: 0.15rem;
 }
+/* Опечатка в исходном LaTeX не должна выглядеть "сломанной" — просто текст без разметки */
+.ticket-body .katex-error {
+  color: inherit;
+  font-family: var(--mono);
+}
 
 .toggle-row {
   display: flex;
